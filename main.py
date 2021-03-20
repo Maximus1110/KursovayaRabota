@@ -5,8 +5,8 @@ from datetime import datetime,timedelta
 
 #from logging from 
 from PyQt5 import QtCore,QtGui,QtWidgets
-from form import *
-from  bd.db import *
+from Forms.form import *
+from  Classes.bd.db import *
 
 
 class Widget(QtWidgets.QWidget, Ui_main):
@@ -33,6 +33,12 @@ class NoteItemsUI():
             data=self.ItemsData[index]
             if( name=='Все заметки'):
                 self.ItemsDrow[data.index].makeVisible()
+            elif(name=='Остальные'):
+                b=list(self.ui.UsersButtonsScrollArea)
+                if((self.ItemsData[index].name not in b) or (self.ItemsData[index].name=='Остальные')):
+                    self.ItemsDrow[data.index].makeVisible()
+                else:
+                    self.ItemsDrow[data.index].makeHidden()
             elif(data.name==name):
                 self.ItemsDrow[data.index].makeVisible()
             else:
@@ -41,6 +47,7 @@ class NoteItemsUI():
         
         self.ui.verticalLayout_10.addItem(self.spacerItem)
 
+    
     def deleteItem(self,data):
         
         self.ItemsDrow[data.index].makeHidden()
@@ -193,6 +200,39 @@ class NameButton():
 
     def clkNameButton(self):
         self.ui.NoteItemsUI.Drow(self.name)
+    def clkDelete(self):
+        self.makeHidden()
+        self.ui.UsersButtonsScrollArea.pop(self.name,333)
+        deleteButtonFromDB(self.name)
+        for elem in self.ui.NoteItemsUI.ItemsData.keys():
+            if(self.ui.NoteItemsUI.ItemsData[elem].name==self.name):
+                print(1)
+                data=self.ui.NoteItemsUI.ItemsData[elem]
+                print(data.name)
+                #self.ui.NoteItemsUI.ItemsDrow[elem].makeHidden()
+                #data.name='Остальные'
+                #print(data.name)
+
+                #self.ui.NoteItemsUI.addItem(data)
+                #addItemToDB(data)
+
+    def changeToDel(self):
+        self.Button.clicked.disconnect(self.clkNameButton)
+        self.Button.clicked.connect(self.clkDelete)
+
+    def changeToStandart(self):
+        self.Button.clicked.disconnect(self.clkDelete)
+        self.Button.clicked.connect(self.clkNameButton)
+
+
+
+    def setRedColor(self):
+        self.Button.setStyleSheet("background-color: red;")
+    def makeHidden(self):
+        self.Button.setVisible(False)
+    def setStandartColor(self):
+        self.Button.setStyleSheet("")
+
 
 #Управление календарём
 class Calendar():
@@ -357,7 +397,9 @@ class MWidget(QtWidgets.QWidget):
         self.ui.buttonAdd.clicked.connect(self.clkItemAddButton)
 
         
-
+        self.ui.startTime.setTime(QtCore.QTime(16,30,0))
+        self.ui.endTime.setTime(QtCore.QTime(18,0,0))
+        self.ui.selectDate.setDate(QtCore.QDate.currentDate())
         #Дублируем данные о записях из БД при первом запуске
         for i in getItemDataFromDB():
             a=NoteItemData(i[1],i[2],i[4],i[5],i[6],i[7],i[8],i[0],i[3])
@@ -381,7 +423,9 @@ class MWidget(QtWidgets.QWidget):
         self.ui.verticalLayout_19.addItem(self.spacerItem)
 
         #Убираем кнопки из дизайна
-        self.ui.pushButton_5.setVisible(False)
+        #self.ui.pushButton_5.setVisible(False)
+        self.ui.pushButton_5.setText('Удалить участника')
+        self.ui.pushButton_5.clicked.connect(self.clkDelete)
         self.ui.pushButton_6.setVisible(False)
 
         self.ui.Calendar=Calendar(self.ui)
@@ -389,10 +433,32 @@ class MWidget(QtWidgets.QWidget):
 
         
         self.ui.mainTab.tabBarClicked.connect(self.clkTab)
-
+        self.ui.mainTab.setTabVisible(1,False)
+        self.ui.mainTab.setTabVisible(1,True)
     def clkTab(self):
         self.ui.Calendar.ClearAll()
         self.ui.Calendar.DrowAll()
+
+    def clkDelete(self):
+        for k in self.ui.UsersButtonsScrollArea.keys():
+            if(k!='Все заметки' and k!='Остальные'):
+                self.ui.UsersButtonsScrollArea[k].changeToDel()
+                self.ui.UsersButtonsScrollArea[k].setRedColor()
+        self.ui.pushButton_5.setText('Отмена')
+        self.ui.pushButton_5.clicked.disconnect(self.clkDelete)
+        self.ui.pushButton_5.clicked.connect(self.clkBack)
+
+
+    def clkBack(self):
+        self.ui.pushButton_5.setText('Удалить участника')
+        self.ui.pushButton_5.clicked.disconnect(self.clkBack)
+        self.ui.pushButton_5.clicked.connect(self.clkDelete)
+        for k in self.ui.UsersButtonsScrollArea.keys():
+             if(k!='Все заметки' and k!='Остальные'):
+                self.ui.UsersButtonsScrollArea[k].changeToStandart()
+                self.ui.UsersButtonsScrollArea[k].setStandartColor()
+            
+
 
     #Нажатие левой кнопки добвления нового фильтра пользователя
     def clkNameAddButton(self):
@@ -422,10 +488,13 @@ class MWidget(QtWidgets.QWidget):
     def clkItemAddButton(self):
         
         def addItem(name,text,data,startTime,endTime,everyWeek=False,addToCalendar=False):
+            if(str(endTime)<str(startTime)):
+                return False
             Item=NoteItemData(name,text,data,startTime,endTime,everyWeek,addToCalendar)
             self.ui.NoteItemsUI.addItem(Item)
             self.ui.NoteItemsUI.Drow(name)
             addItemToDB(Item)
+            return True
 
         text=self.ui.enterText.toPlainText()
         name=self.ui.selectName.currentText()
@@ -434,7 +503,10 @@ class MWidget(QtWidgets.QWidget):
 
         endTime=self.ui.endTime.time().toString()
         data=self.ui.selectDate.date().toString()
-        addItem(name,text,data,startTime,endTime,self.ui.checkBox.isChecked(),self.ui.addToKal.isChecked())
+        if(addItem(name,text,data,startTime,endTime,self.ui.checkBox.isChecked(),self.ui.addToKal.isChecked())):
+            self.ui.enterText.setPlaceholderText('Место для вашей заметки')
+        else:
+            self.ui.enterText.setPlaceholderText('Ошибка. Некоректный интервал времени.')
 
     def setDefCalendar(self):
         self.ui.dateEdit_2.setVisible(False)
